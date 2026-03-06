@@ -78,7 +78,7 @@ mini-react/
 // src/types.ts
 
 // WorkTag: Fiberの種類を判別する定数
-const FunctionComponent = 2  // ★ React本体と一致（0は誤り）
+const FunctionComponent = 0  // ★ React本体と一致（ReactWorkTags.jsで0と定義）
 const HostRoot          = 3  // createRootで作られるルート
 const HostComponent     = 5  // div, span などDOM要素
 const HostText          = 6  // テキストノード
@@ -378,9 +378,8 @@ global.cancelIdleCallback = () => {}
     - keyなし実装の限界を示すことでkeyの価値を実感させる
 - `deletions` 配列の役割（本書ではグローバル管理で簡略化。本物は各Fiberが自分の `deletions[]` と `ChildDeletion` フラグを持つ）
 - **★ `effectList` vs `subtreeFlags` の選択を明示（必須）**:
-  - React 16以前: `effectList`（副作用あるFiber全体のリンクリスト）
-  - **React 17で廃止**・`subtreeFlags`を導入（各FiberがBitORで子のフラグを集約、変更なしサブツリーをスキップ）
-  - React 18以降も `subtreeFlags` を継続使用（変更なし）
+  - React 17以前: `effectList`（副作用あるFiber全体のリンクリスト）を commit 時にたどる方式
+  - React 17で `subtreeFlags` を導入（各FiberがBitORで子孫のフラグを集約、変更なしサブツリーをスキップ）。React 18以降も継続使用
   - 本書は教育目的でシンプルなサブツリートラバーサルを採用し、その旨を明記
 - **`requestIdleCallback` のスケジューリング**: 教育目的の近似実装として使用するが、概念的限界を正直に説明
   - `requestIdleCallback` は「暇なときに実行」であり、真の中断・再開（`shouldYield()`ベース）ではない
