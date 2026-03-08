@@ -72,9 +72,6 @@ export function commitRoot(wipRoot: Fiber, deletions: Fiber[]): void {
 // ============================================================
 
 function commitMutationEffects(fiber: Fiber): void {
-  // DFSで全Fiberを処理
-  let current: Fiber | null = fiber
-
   // 子→兄弟→親の順で処理するため、再帰的に呼ぶ
   commitMutationEffectsOnFiber(fiber)
 }
@@ -163,12 +160,25 @@ function commitDeletion(fiber: Fiber): void {
 
 /**
  * 削除されるFiberツリー内の全useEffectクリーンアップを実行する
+ *
+ * 注意: commitDeletionのエントリポイントから呼ばれるため、
+ * このfiber自身とその子孫のみをクリーンアップする。
+ * 兄弟は削除対象ではないので辿らない。
  */
 function commitNestedUnmounts(fiber: Fiber): void {
   commitHookEffectListUnmount(HookPassive, fiber)
 
-  if (fiber.child) commitNestedUnmounts(fiber.child)
-  if (fiber.sibling) commitNestedUnmounts(fiber.sibling)
+  if (fiber.child) commitNestedUnmountsOnChild(fiber.child)
+}
+
+/**
+ * 子孫のクリーンアップ（子と兄弟を再帰的に辿る）
+ */
+function commitNestedUnmountsOnChild(fiber: Fiber): void {
+  commitHookEffectListUnmount(HookPassive, fiber)
+
+  if (fiber.child) commitNestedUnmountsOnChild(fiber.child)
+  if (fiber.sibling) commitNestedUnmountsOnChild(fiber.sibling)
 }
 
 // ============================================================

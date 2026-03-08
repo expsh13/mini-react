@@ -41,6 +41,7 @@ function workLoop(deadline: IdleDeadline): void {
 **ただし重要な注意点：**
 
 `requestIdleCallback` は「暇なときに実行」であり、真の中断・再開ではない。Reactチームが却下した理由：
+- **タイムスライスの不適合**：idle callbackは最大約50msの遅延で低優先度実行されるため、Reactが必要とする予測可能な約5msタイムスライスに不適
 - **Safariのサポート不足**（長期間未実装）
 - **スケジューラ制御不可**（いつ実行されるか制御できない）
 
@@ -106,6 +107,8 @@ function updateFunctionComponent(fiber: Fiber): void {
 
 ## 5.5 reconcileChildren — 差分検出の核心
 
+> **教育的簡略化**: 本番Reactのreconciliationは2パス方式だ。(1) 先頭から順に線形スキャンし、keyまたはインデックスが一致しなくなった時点で中断 (2) 残りをMapに入れて照合する。本書では理解しやすさを優先して、最初からMap照合のみで実装している。
+
 ```typescript
 function reconcileChildren(wipFiber: Fiber, elements: (VNode | string | number)[]): void {
   // keyによる既存Fiberのマップを構築
@@ -126,6 +129,8 @@ function reconcileChildren(wipFiber: Fiber, elements: (VNode | string | number)[
     const matchedFiber = existingFibers.get(getKey(element, i))
     existingFibers.delete(getKey(element, i))
 
+    let newFiber: Fiber
+
     if (matchedFiber && canReuse(matchedFiber, element)) {
       // 再利用: Update フラグ
       newFiber = reuseFiber(matchedFiber, element)
@@ -138,9 +143,16 @@ function reconcileChildren(wipFiber: Fiber, elements: (VNode | string | number)[
       // 新規: Placement フラグ
       newFiber = createFiberFromElement(element, i)
       newFiber.flags |= Placement
+
+      // keyは一致したが型が異なる場合、古いFiberを削除
+      if (matchedFiber) {
+        deletions.push(matchedFiber)
+      }
     }
     // ... ポインタを繋ぐ
   }
+
+> **注意**: 本書の実装では再利用時に常に Update フラグをセットしている。本番 React では `pendingProps` と `memoizedProps` の shallow compare を行い、変更がなければ Update をスキップする（bailout）。これが第4章で解説した `pendingProps` / `memoizedProps` が2つ存在する理由の1つだ。
 
   // 残った既存Fiberは削除
   existingFibers.forEach((fiber) => {
@@ -178,17 +190,26 @@ keyが重要な理由はここにある。`[A,B,C,D] → [D,A,B,C]` の並び替
   C(key=c, 旧idx=2): lastPlacedIndex=3, 2<3  → 移動が必要(Placement)
 ```
 
+トレース表にまとめると、各ステップの判定が明確になる:
+
+| ステップ | 要素 | key | 旧index | lastPlacedIndex | 判定 | フラグ | 更新後 |
+|---------|------|-----|---------|----------------|------|--------|--------|
+| 1 | D | d | 3 | 0 | 3 >= 0 | なし | 3 |
+| 2 | A | a | 0 | 3 | 0 < 3 | Placement | 3 |
+| 3 | B | b | 1 | 3 | 1 < 3 | Placement | 3 |
+| 4 | C | c | 2 | 3 | 2 < 3 | Placement | 3 |
+
 「Dを前に動かす」ではなく「A,B,CをDの後ろに動かす」という判断になる。DOMの操作回数は同じだが、Dの既存DOMノードを再利用できる。
 
 ### 本書の設計選択
 
-**keyのみ照合（インデックスフォールバックなし）：**
+**keyがある場合はkeyで照合し、ない場合はインデックスをkeyとして使用：**
 
-本番Reactはkeyがない場合インデックスで照合する。しかしkeyとインデックスが混在すると照合ロジックが複雑になる。本書はkeyのみ照合（インデックスはkeyとして使用）とし、省略していることを明記する。
+本番Reactと同様に、keyが指定されている場合はkeyで照合し、keyがない場合はインデックスをkeyとして使用する。これにより、keyなしの要素でも位置ベースでの照合が可能になる。
 
 **effectList vs subtreeFlags：**
 
-React 17以前は `effectList`（副作用あるFiber全体のリンクリスト）をたどる方式だった。React 17以降は `subtreeFlags`（各FiberにBitORで子孫フラグを集約）に移行し、変更なしのサブツリーをスキップできるようになった。本書は教育目的でシンプルなサブツリートラバーサルを採用する。
+React 17以前は `effectList`（副作用あるFiber全体のリンクリスト）をたどる方式だった。React 18以降は `subtreeFlags`（各FiberにBitORで子孫フラグを集約）に移行し、変更なしのサブツリーをスキップできるようになった。本書は教育目的でシンプルなサブツリートラバーサルを採用する。
 
 ## 5.6 バッチ更新のスコープ
 
@@ -215,6 +236,12 @@ setTimeout(() => {
 
 **まだ解決できていないこと：**
 - render phaseで検出した差分をDOMに適用する方法
+
+### 演習問題
+
+**Q**: `[A, B, C]` → `[C, A]` の並び替えで、reconciliation はどのような差分を出力するか？各要素にkey `a`, `b`, `c` が付いているとして、lastPlacedIndex の変化を追ってみよう。
+
+ヒント: C(旧idx=2) → lastPlacedIndex=2、A(旧idx=0) → 0 < 2 なので Placement。B は existingFibers に残るので Deletion。
 
 ---
 

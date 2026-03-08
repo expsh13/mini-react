@@ -1,3 +1,4 @@
+import { vi } from 'vitest'
 import { createElement, Fragment } from '../src/createElement'
 import { render } from '../src/render'
 
@@ -36,7 +37,7 @@ describe('render (Chapter 3): 再帰レンダラ', () => {
   })
 
   test('クリックイベントハンドラが動作する', () => {
-    const onClick = jest.fn()
+    const onClick = vi.fn()
     render(createElement('button', { onClick }, 'Click me'), container)
     const button = container.querySelector('button')!
     button.click()

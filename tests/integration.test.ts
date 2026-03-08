@@ -5,15 +5,16 @@
  * すべて組み合わせた E2E テスト。
  */
 
+import { vi } from 'vitest'
 import '../src/hooks/useState'
 import { createElement, Fragment } from '../src/createElement'
 import { createRoot } from '../src/workLoop'
 import { useState, useEffect, useRef } from '../src/hooksDispatcher'
 
 // MessageChannel mock の setTimeout(0) をフラッシュする
-// jest.runAllTimers() は setInterval と無限ループになるため使わない
+// vi.runAllTimers() は setInterval と無限ループになるため使わない
 function flushEffects(): void {
-  jest.advanceTimersByTime(0)
+  vi.advanceTimersByTime(1)
 }
 
 // ============================================================
@@ -82,7 +83,7 @@ describe('integration (Chapter 9): ストップウォッチ E2E', () => {
   let root: ReturnType<typeof createRoot>
 
   beforeEach(() => {
-    jest.useFakeTimers()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -90,7 +91,7 @@ describe('integration (Chapter 9): ストップウォッチ E2E', () => {
   })
 
   afterEach(() => {
-    jest.useRealTimers()
+    vi.useRealTimers()
     document.body.removeChild(container)
   })
 
@@ -120,7 +121,7 @@ describe('integration (Chapter 9): ストップウォッチ E2E', () => {
     flushEffects()
 
     // 1秒進める
-    jest.advanceTimersByTime(1000)
+    vi.advanceTimersByTime(1000)
     flushEffects()
 
     // Stop
@@ -140,7 +141,7 @@ describe('integration (Chapter 9): ストップウォッチ E2E', () => {
       new MouseEvent('click', { bubbles: true })
     )
     flushEffects()
-    jest.advanceTimersByTime(2000)
+    vi.advanceTimersByTime(2000)
     flushEffects()
 
     container.querySelector('#reset')!.dispatchEvent(
@@ -161,7 +162,7 @@ describe('integration (Chapter 9): ストップウォッチ E2E', () => {
     flushEffects()
 
     // 3秒進める（3回の再レンダリングをまたぐ）
-    jest.advanceTimersByTime(3000)
+    vi.advanceTimersByTime(3000)
     flushEffects()
 
     expect(container.querySelector('#time')?.textContent).toBe('3s')
@@ -173,7 +174,7 @@ describe('integration (Chapter 9): ストップウォッチ E2E', () => {
     flushEffects()
 
     // 停止後は増えない
-    jest.advanceTimersByTime(2000)
+    vi.advanceTimersByTime(2000)
     flushEffects()
     expect(container.querySelector('#time')?.textContent).toBe('3s')
   })

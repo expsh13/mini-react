@@ -91,6 +91,8 @@ export function updateProps(dom: HTMLElement, prevProps: Props, nextProps: Props
         dom.addEventListener(eventType, nextProps[key])
       }
     } else if (key === 'style' && typeof nextProps[key] === 'object') {
+      // 制限事項: Object.assignは古いstyleプロパティを削除しない。
+      // 完全な実装では prevProps.style との差分で個別にクリアする必要がある。
       Object.assign(dom.style, nextProps[key])
     } else if (key === 'className') {
       dom.setAttribute('class', nextProps[key])

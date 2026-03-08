@@ -13,6 +13,8 @@ render phase      commit phase      ペイント
                      （同期・ペイント前）      （非同期・ペイント後）
 ```
 
+> **注意**: `[Paint] → [Passive]` の順序は多くの場合成立するが、仕様上の保証ではない。MessageChannel のマクロタスクがブラウザの描画より先に処理される可能性もある。第6章で解説した通り、これはスケジューリングのヒューリスティックだ。
+
 **useLayoutEffect（本書では省略）：**
 - commitの Mutation phase 直後、ペイント前に同期実行
 - DOM計測（`getBoundingClientRect()`）が正確
@@ -26,6 +28,14 @@ render phase      commit phase      ペイント
 ## 8.2 HookHasEffect フラグ
 
 useEffect の最重要実装ポイントは `HookHasEffect` フラグだ。
+
+> **Fiber.flagsとEffect.tagは別のフラグ体系**であることに注意。Fiber.flagsの`Passive`(=8)は「このFiberにpassive effectがある」ことを示すFiberレベルのフラグ。Effect.tagの`HookPassive`(=4)は個々のEffectオブジェクトの種類を示す。値もスコープも異なる。
+
+> Ch04で導入したFiberの`flags`と同じビットフラグ設計をEffectにも適用する。`|`(OR)でフラグを組み合わせ、`&`(AND)で判定する:
+> ```typescript
+> const tag = HookPassive | HookHasEffect  // 0b100 | 0b001 = 0b101
+> (tag & HookHasEffect) !== 0  // → true（実行すべき）
+> ```
 
 ```typescript
 const HookNoFlags   = 0b000  // 0
@@ -84,6 +94,8 @@ export function updateEffect(create, deps?) {
 
 EffectはFiber.updateQueueに循環リンクリストとして格納される。Hookリンクリスト（Fiber.memoizedState）とは別管理だ。
 
+> **なぜ2箇所から参照するのか？** `hook.memoizedState`にEffectを格納するのは、`updateEffect`で前回の`deps`と`destroy`を参照するため。`Fiber.updateQueue.lastEffect`の循環リストは、commit phaseが全Effectを順にイテレートするため。同じEffectオブジェクトへの参照であり、コピーではない。
+
 ```
 Fiber.memoizedState → Hook1 → Hook2 → null
                        ↓
@@ -133,7 +145,7 @@ export function areHookInputsEqual(nextDeps, prevDeps): boolean {
 `===` ではなく `Object.is` を使う理由：
 
 ```typescript
-NaN === NaN   // false（❌ deps変化なしと判定してしまう）
+NaN === NaN   // false（❌ 変化ありと誤判定し、毎回エフェクトが再実行される）
 Object.is(NaN, NaN)  // true（✓ 正しく「変化なし」と判定）
 
 +0 === -0     // true（❌ 同じと判定してしまう）
@@ -287,6 +299,37 @@ function Stopwatch() {
 - deps比較で必要なときだけエフェクトを実行できる
 - クリーンアップを正しいタイミングで実行できる
 - MessageChannelでペイント後に非同期実行できる
+
+**まだ解決できていないこと：**
+- 全機能（createElement, Fiber, reconciliation, useState, useEffect）を統合した完全なアプリの構築
+
+### 演習問題
+
+**Q1**: `useEffect(() => { ... }, [])` と `useEffect(() => { ... })` の違いを説明せよ。`deps` に空配列 `[]` を渡した場合と、`deps` を省略した場合で、`HookHasEffect` フラグの挙動がどう変わるかをコードから追ってみよう。
+
+ヒント: `updateEffect` の `areHookInputsEqual` 呼び出しで、`prevDeps` と `nextDeps` がどうなるかを考える。空配列同士の比較は `true`（変化なし）、`null` 同士の比較は `false`（常に変化あり）。
+
+**Q2**: 以下のコードで `count` が変化したとき、cleanup と effect はどの順序で実行されるか？複数の `useEffect` がある場合の実行順を予測してみよう。
+
+```typescript
+function App() {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    console.log('A effect')
+    return () => console.log('A cleanup')
+  }, [count])
+
+  useEffect(() => {
+    console.log('B effect')
+    return () => console.log('B cleanup')
+  }, [count])
+
+  return createElement('button', { onClick: () => setCount(c => c + 1) }, String(count))
+}
+```
+
+ヒント: `flushPassiveEffects` はまず全クリーンアップを実行し、その後で全エフェクトを実行する。
 
 ---
 

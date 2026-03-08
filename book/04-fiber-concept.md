@@ -67,10 +67,16 @@ type Fiber = {
 
   // ⑧ 変更フラグ
   flags: Flags  // Placement=1, Update=2, Deletion=4, Passive=8
+  // ※ ビット値は教育用に簡略化。本番ReactではPlacement=2, Update=4, Passive=256等
+  //   ビット位置が異なり、DeletionはChildDeletionとして親Fiberに設定される。
+  subtreeFlags: Flags  // 子孫のflagsをBitORで集約（変更なしサブツリーのスキップに使用）
 
-  // ⑨ Hooksの状態
-  memoizedState: Hook | null    // Hookリンクリストの先頭
-  updateQueue: FunctionComponentUpdateQueue | null  // Effectリンクリスト
+  // ⑨ 兄弟間でのインデックス（reconciliationのlastPlacedIndex計算で使用 → Ch05）
+  index: number
+
+  // ⑩ Hooksの状態（→ Ch07で詳説）
+  memoizedState: Hook | null    // Hookリンクリストの先頭（→ Ch07で詳説）
+  updateQueue: FunctionComponentUpdateQueue | null  // Effectリンクリスト（→ Ch08で詳説）
 }
 ```
 
@@ -232,9 +238,16 @@ export function createWorkInProgress(current: Fiber, pendingProps: Props): Fiber
   } else {
     // 2回目以降: 再利用（メモリ効率化）
     wip.pendingProps = pendingProps
+    wip.type = current.type
     wip.flags = NoFlags
+    wip.subtreeFlags = NoFlags
+    wip.child = null
+    wip.updateQueue = null
   }
+  // currentの情報を引き継ぐ
+  wip.memoizedProps = current.memoizedProps
   wip.memoizedState = current.memoizedState
+  wip.index = current.index
   return wip
 }
 ```
@@ -280,6 +293,19 @@ while (node) {
 **まだ解決できていないこと：**
 - ワークループ（実際に中断しながらFiberを処理する仕組み）
 - reconciliation（差分検出）
+
+### 演習問題
+
+**Q**: 以下のFiberツリーを手動で構築し、DFSトラバースの順序（beginWork/completeWorkの呼び出し順）を予測してみよう。
+
+```jsx
+<div>
+  <p>Hello</p>
+  <span>World</span>
+</div>
+```
+
+ヒント: `div → p → "Hello" → "Hello"(complete) → p(complete) → span → "World" → ...` の順で進む。
 
 ---
 

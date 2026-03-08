@@ -104,9 +104,8 @@ HostRoot (beginWork)
   └── Stopwatch (FunctionComponent, beginWork)
         ↓ prepareToRenderHooks: currentDispatcher = updateDispatcher
         ↓ Stopwatch() 関数を実行
-            useState(0) → updateState → time = 0
-            useState(false) → updateState → running = false（まだ古い値）
-        ↓ あ、いや running = true に更新される
+            useState(0) → updateState → queue.pending = null → time = 0
+            useState(false) → updateState → queue.pending を処理 → running = true
 ```
 
 実際には `updateState` が `queue.pending` を処理する：
@@ -202,7 +201,7 @@ PromiseをFiber内でアンラップする。`Suspense` と連動して、Promis
 
 **`ref` as prop（React 19正式サポート）：**
 
-React 19では `forwardRef` なしで `ref` をpropsとして受け取れる（forwardRefは非推奨に）。本書の実装では `ref` をpropsの1つとして扱っており、この変更に近い形だ。
+React 19では `forwardRef` なしで `ref` をpropsとして受け取れる（forwardRefは将来的に非推奨になる見込み）。本書の実装では `ref` をpropsの1つとして扱っており、この変更に近い形だ。
 
 **React Compiler：**
 
@@ -268,7 +267,7 @@ FiberはClient Componentのみ担当する。Server ComponentはRSC Payload（JS
 
 ## 最後に
 
-500行足らずのコードでReact 18の核心を実装した。
+約800行のコードでReact 18の核心を実装した。
 
 `useState` が条件分岐内で使えない理由、`useEffect` のクリーンアップが次のエフェクト実行前に呼ばれる理由、`useRef` がなぜ再レンダリングを起こさないか——すべて実装から自然に導かれた。
 

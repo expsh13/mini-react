@@ -16,7 +16,7 @@
  *    - 本書: 教育目的でシンプルなサブツリートラバーサルを採用（この旨を明記）
  *
  * 3. reconcileChildren:
- *    - keyのみ照合（インデックスフォールバックなし）← 省略を明記
+ *    - keyがある場合はkeyで照合し、ない場合はインデックスをkeyとして使用
  *    - lastPlacedIndex の概念を実装で示す
  */
 
@@ -35,8 +35,9 @@ import {
 } from './types'
 import { createFiber, createFiberRoot, createWorkInProgress } from './fiber'
 import { createDOMElement, createTextNode } from './dom/domOperations'
-import { prepareToRenderHooks } from './hooksDispatcher'
+import { prepareToRenderHooks, finishRenderingHooks } from './hooksDispatcher'
 import { Fragment } from './createElement'
+import { commitRoot } from './commit'
 
 // ============================================================
 // モジュールレベルの状態
@@ -113,8 +114,6 @@ function workLoop(deadline: IdleDeadline): void {
 
   // すべての作業が完了したらコミット
   if (nextUnitOfWork === null && wipRoot !== null) {
-    // 循環参照を避けるために動的importではなく直接require
-    const { commitRoot } = require('./commit')
     commitRoot(wipRoot, deletions)
     currentRoot = wipRoot
     wipRoot = null
@@ -189,6 +188,10 @@ function updateFunctionComponent(fiber: Fiber): void {
 
   const fn = fiber.type as Function
   const children = fn(fiber.pendingProps)
+
+  // Hook数が前回より減っていないかチェック
+  finishRenderingHooks()
+
   reconcileChildren(fiber, children ? [children] : [])
 }
 
@@ -256,8 +259,7 @@ function completeWork(fiber: Fiber): void {
  *   - 消えた要素 → Deletion フラグ（deletions配列に追加）
  *
  * 本書の設計選択:
- * - keyのみ照合（インデックスフォールバックなし）
- *   → keyなし時の挙動は第5章で説明する
+ * - keyがある場合はkeyで照合し、ない場合はインデックスをkeyとして使用
  * - lastPlacedIndex の概念を実装して示す
  */
 function reconcileChildren(
@@ -355,9 +357,10 @@ function canReuse(fiber: Fiber, element: VNode | string | number): boolean {
  */
 function reuseFiber(existing: Fiber, element: VNode | string | number): Fiber {
   const clone = createWorkInProgress(existing, getPropsFromElement(element))
+  // 常にUpdateフラグをセットしてcommitでDOM属性を更新する。
+  // 本番Reactではpropsのshallow compareで変更がなければスキップする最適化がある。
+  // 教育目的で簡略化し、常にUpdateとしている。
   clone.flags |= Update
-  // UpdateフラグをセットしてcommitでDOM属性を更新する
-  // ただしPlacementでない場合はDOM移動は不要
   clone.flags &= ~Placement  // Updateのみ（Placementを外す）
   return clone
 }
@@ -385,7 +388,7 @@ function createFiberFromElement(element: VNode | string | number, index: number)
   if (vnode.type === Fragment) {
     // Fragmentは特殊なFunctionComponentとして扱う
     // DOM要素を生成せず、子を直接親に接続する
-    const fiber = createFiber(FunctionComponent, Fragment as any, vnode.props, vnode.key)
+    const fiber = createFiber(FunctionComponent, Fragment as symbol, vnode.props, vnode.key)
     fiber.index = index
     return fiber
   }
@@ -394,7 +397,7 @@ function createFiberFromElement(element: VNode | string | number, index: number)
     tag = HostComponent
   }
 
-  const fiber = createFiber(tag as import('./types').WorkTag, vnode.type as any, vnode.props, vnode.key)
+  const fiber = createFiber(tag as import('./types').WorkTag, vnode.type as string | Function, vnode.props, vnode.key)
   fiber.index = index
   return fiber
 }
@@ -422,6 +425,3 @@ export function setCurrentRoot(root: Fiber): void {
   currentRoot = root
 }
 
-export function setWipRoot(root: Fiber | null): void {
-  wipRoot = root
-}

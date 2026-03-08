@@ -1,5 +1,13 @@
+import { vi } from 'vitest'
+// Dispatcherを初期化するために hooks/useState.ts を先にインポートする必要がある
+import '../src/hooks/useState'
 import { createElement, Fragment } from '../src/createElement'
 import { createRoot } from '../src/workLoop'
+import { useState, useEffect } from '../src/hooksDispatcher'
+
+function flushEffects(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
 
 describe('commit (Chapter 6): コミットフェーズ', () => {
   let container: HTMLElement
@@ -55,8 +63,8 @@ describe('commit (Chapter 6): コミットフェーズ', () => {
   })
 
   test('イベントハンドラを更新できる', () => {
-    const handler1 = jest.fn()
-    const handler2 = jest.fn()
+    const handler1 = vi.fn()
+    const handler2 = vi.fn()
 
     root.render(createElement('button', { onClick: handler1 }, 'Click'))
     container.querySelector('button')!.click()
@@ -91,5 +99,80 @@ describe('commit (Chapter 6): コミットフェーズ', () => {
     root.render(createElement('span', null, 'Content'))
     expect(container.querySelector('div')).toBeNull()
     expect(container.querySelector('span')).toBeTruthy()
+  })
+
+  test('commitDeletionで兄弟ノードのエフェクトがクリーンアップされない', async () => {
+    const cleanupA = vi.fn()
+    const cleanupB = vi.fn()
+    let setVisible: (v: boolean) => void
+
+    function Parent() {
+      const [visible, sv] = useState(true)
+      setVisible = sv
+      return createElement('div', null,
+        visible ? createElement(ChildA as any, { key: 'a' }) : null,
+        createElement(ChildB as any, { key: 'b' })
+      )
+    }
+
+    function ChildA() {
+      useEffect(() => cleanupA, [])
+      return createElement('span', null, 'A')
+    }
+
+    function ChildB() {
+      useEffect(() => cleanupB, [])
+      return createElement('span', null, 'B')
+    }
+
+    root.render(createElement(Parent as any, null))
+    await flushEffects()
+
+    // ChildAを削除
+    setVisible!(false)
+    await flushEffects()
+
+    // ChildAのクリーンアップは実行される
+    expect(cleanupA).toHaveBeenCalledTimes(1)
+    // ChildBのクリーンアップは実行されない（兄弟なので削除対象外）
+    expect(cleanupB).not.toHaveBeenCalled()
+  })
+
+  test('FunctionComponent兄弟のgetHostSibling', () => {
+    function FC() {
+      return createElement('span', null, 'fc')
+    }
+
+    root.render(
+      createElement('div', null,
+        createElement(FC as any, null),
+        createElement('p', null, 'sibling')
+      )
+    )
+
+    const div = container.querySelector('div')!
+    expect(div.children[0].tagName).toBe('SPAN')
+    expect(div.children[1].tagName).toBe('P')
+  })
+
+  test('ネストしたFunctionComponentのgetHostSibling', () => {
+    function Inner() {
+      return createElement('em', null, 'inner')
+    }
+
+    function Outer() {
+      return createElement(Inner as any, null)
+    }
+
+    root.render(
+      createElement('div', null,
+        createElement(Outer as any, null),
+        createElement('b', null, 'bold')
+      )
+    )
+
+    const div = container.querySelector('div')!
+    expect(div.children[0].tagName).toBe('EM')
+    expect(div.children[1].tagName).toBe('B')
   })
 })

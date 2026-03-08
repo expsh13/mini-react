@@ -61,7 +61,7 @@ export function commitRoot(wipRoot: Fiber, deletions: Fiber[]): void {
 なぜ Mutation後・Passive前か？
 
 - **Mutation前に切り替えたら**：`commitDeletion` 内で `current` を参照したときに、まだ古いDOMが `current` にある状態と新しいDOMが `current` にある状態が混在する
-- **Passive後に切り替えたら**：`useEffect` のクリーンアップ内で `current` を参照すると、まだ古いFiberツリーを見ることになる
+- **Passive後に切り替えたら**：`useEffect` 内で `setState` が呼ばれた場合、新しいレンダーの起点となる `current` がまだ古いツリーのままになってしまう
 
 ## 6.4 commitPlacement — DOMの挿入
 
@@ -106,13 +106,22 @@ function commitDeletion(fiber: Fiber): void {
 }
 
 function commitNestedUnmounts(fiber: Fiber): void {
-  // FunctionComponentのuseEffectクリーンアップ
+  // このfiber自身のクリーンアップ
   commitHookEffectListUnmount(HookPassive, fiber)
+  // 子孫のみ辿る（兄弟は削除対象ではない）
+  if (fiber.child) commitNestedUnmountsOnChild(fiber.child)
+}
 
-  if (fiber.child) commitNestedUnmounts(fiber.child)
-  if (fiber.sibling) commitNestedUnmounts(fiber.sibling)
+function commitNestedUnmountsOnChild(fiber: Fiber): void {
+  commitHookEffectListUnmount(HookPassive, fiber)
+  if (fiber.child) commitNestedUnmountsOnChild(fiber.child)
+  if (fiber.sibling) commitNestedUnmountsOnChild(fiber.sibling)
 }
 ```
+
+> **なぜ2つの関数に分けるのか？** `commitNestedUnmounts`は削除対象のルートFiber用で、兄弟を辿らない。削除対象はそのFiber1つだけであり、兄弟は削除対象ではないためだ。`commitNestedUnmountsOnChild`は子孫用で、子と兄弟の両方を再帰的に辿る。
+
+> **教育的簡略化**: 本書では `commitDeletion` 内で passive effect のクリーンアップを同期実行しているが、本番React 18では削除されたFiberのpassive effectクリーンアップも `flushPassiveEffects` 内で非同期実行される。mutation phaseで同期実行されるのは `useLayoutEffect` のクリーンアップのみだ。
 
 なぜ子孫のクリーンアップが必要か？
 
@@ -132,6 +141,15 @@ function Child() {
 
 `Parent` が削除されたとき、`Child` の `useEffect` クリーンアップも実行しないと、`setInterval` が残り続けてメモリリークになる。
 
+> **コラム: 削除時と通常アンマウント時のエフェクトフラグの違い**
+>
+> `commitHookEffectListUnmount` に渡すフラグが場面によって異なることに注意しよう。
+>
+> - **削除時**（`commitNestedUnmounts`）: `HookPassive` のみ。削除されるコンポーネントの**すべての** useEffect クリーンアップを実行する。deps が変化したかどうかに関係なく、全エフェクトをクリーンアップする必要があるためだ。
+> - **通常の再レンダリング時**（`commitPassiveUnmountEffects`）: `HookPassive | HookHasEffect`。deps が変化した（`HookHasEffect` フラグが立っている）エフェクトのみクリーンアップする。deps が変化していないエフェクトは前回のまま継続する。
+>
+> この違いは、削除時は「もう二度と実行されない」のですべてクリーンアップが必要なのに対し、再レンダリング時は「変化したエフェクトだけを入れ替える」ためだ。
+
 ## 6.6 useEffect のスケジューリング：MessageChannel
 
 ```typescript
@@ -147,7 +165,7 @@ function schedulePassiveEffects(wipRoot: Fiber): void {
 
 なぜ `setTimeout(0)` ではなく `MessageChannel` か？
 
-`setTimeout(0)` は最小4msの遅延がある（HTML仕様で規定）。`MessageChannel` は遅延なしでマクロタスクキューに積める。これにより、ブラウザが画面を描画した直後（ペイント後）に `useEffect` が実行される。
+`setTimeout(0)` はネスト深度が5を超える場合に最小4msの遅延がある（HTML仕様）。`MessageChannel` はこの制約なくマクロタスクキューに積める。Mutation phaseが同期的にDOM変更を完了した後、MessageChannelのマクロタスクが実行される。多くの場合ブラウザはその間に描画を行うため、実質的に「ペイント後」の実行となるが、仕様上の保証ではなくスケジューリングのヒューリスティックである。
 
 本番Reactもこの方式を使っている。
 

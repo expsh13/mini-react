@@ -78,8 +78,13 @@ export function prepareToRenderHooks(fiber: Fiber): void {
 
 /**
  * レンダリング後のクリーンアップ
+ * 前回より少ないHookしか呼ばれなかった場合エラーにする
  */
 export function finishRenderingHooks(): void {
+  // 更新時: currentHookにまだ未消費のhookが残っていたらエラー
+  if (currentHook !== null && currentHook.next !== null) {
+    throw new Error('Rendered fewer hooks than expected. This may be caused by an accidental early return statement.')
+  }
   currentlyRenderingFiber = null
   workInProgressHook = null
   currentHook = null

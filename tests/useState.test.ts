@@ -1,3 +1,4 @@
+import { vi } from 'vitest'
 // Dispatcherを初期化するために hooks/useState.ts を先にインポートする必要がある
 import '../src/hooks/useState'
 import { createElement } from '../src/createElement'
@@ -80,7 +81,7 @@ describe('useState + useRef (Chapter 7): Hooks実装', () => {
   })
 
   test('useState: lazy initialization（関数で初期値を渡す）', () => {
-    const initializer = jest.fn(() => 42)
+    const initializer = vi.fn(() => 42)
     let setCount: (n: number) => void
 
     function Counter() {
@@ -135,6 +136,26 @@ describe('useState + useRef (Chapter 7): Hooks実装', () => {
     // ref.current を変えても再レンダリングは起きない
     ref!.current = 999
     expect(renderCount).toBe(1)
+  })
+
+  test('前回より少ないHook呼び出しでエラーが投げられる', () => {
+    let show = true
+    let forceUpdate: (v: number) => void
+
+    function BadComponent() {
+      const [, fu] = useState(0)
+      forceUpdate = fu
+      if (show) {
+        useState(0)
+      }
+      return createElement('div', null, 'test')
+    }
+
+    root.render(createElement(BadComponent as any, null))
+
+    // 2回目のレンダリングでHook数が減る
+    show = false
+    expect(() => forceUpdate!(1)).toThrow('Rendered fewer hooks than expected')
   })
 
   test('クリックで状態が更新される（DOMイベント統合テスト）', () => {

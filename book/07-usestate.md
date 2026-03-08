@@ -230,8 +230,16 @@ export function updateState(initialState) {
 複数の `setState` が連続して呼ばれた場合、それらをキューに積む。末尾を `pending` とし、末尾の `next` が先頭を指す循環構造にすることで、O(1)で末尾に追加できる。
 
 ```
-dispatch(1) → pending: [1]（自己ループ）
-dispatch(2) → pending: [1→2→1]（末尾に追加、末尾を更新）
+dispatch(1):
+  pending → [1] ←┐
+             └────┘  （自己ループ: pending = 末尾 = 先頭）
+
+dispatch(2):
+  pending → [2] → [1] ←┐
+             └──────────┘
+  （pending は末尾[2]、pending.next は先頭[1]）
+
+処理時: first = pending.next → [1] → [2] → (firstに戻ったら終了)
 ```
 
 ## 7.7 Bailout（同じ値なら再レンダリングをスキップ）
@@ -245,14 +253,36 @@ function createDispatch(fiber, queue) {
     // const newState = queue.lastRenderedReducer(queue.lastRenderedState, action)
     // if (Object.is(newState, queue.lastRenderedState)) return  // スケジュールすらしない
     //
-    // 本書では Eager bailout を省略。render phase bailout のみ実装。
+    // 本書では bailout 最適化を省略している（Eager bailout も render phase bailout も実装しない）。
 
     scheduleUpdateOnFiber(fiber)
   }
 }
 ```
 
-`Object.is` による同値比較でbailoutする設計（render phase bailout）は `updateState` 内に組み込む余地があるが、本書では説明の単純化のため省略している。
+本番Reactには2段階の bailout がある。(1) dispatch 時に `Object.is` で比較する **Eager bailout**（コラム参照）と、(2) render phase 内で `updateState` が新旧 state を比較する **render phase bailout** だ。本書ではどちらも省略しているため、同じ値を `setState` しても再レンダリングが実行される。
+
+> **コラム: Eager Bailout — 同じ値の setState で再レンダリングを省略する仕組み**
+>
+> 本番Reactでは、`dispatch` 関数内で `Object.is` を使って新旧の値を比較し、同じ値なら `scheduleUpdateOnFiber` すら呼ばない「eager bailout」最適化がある。
+>
+> ```typescript
+> function dispatchSetState(fiber, queue, action) {
+>   const update = { action, next: null }
+>   // ... updateをキューに追加 ...
+>
+>   // ★ Eager bailout: 現在の状態と同じなら再レンダリングをスケジュールしない
+>   const currentState = queue.lastRenderedState
+>   const eagerState = typeof action === 'function' ? action(currentState) : action
+>   if (Object.is(eagerState, currentState)) {
+>     return  // 何もしない！
+>   }
+>
+>   scheduleUpdateOnFiber(fiber)
+> }
+> ```
+>
+> この最適化により、`setCount(0)` を何度呼んでも（初期値が0なら）再レンダリングは発生しない。本書では教育目的で省略しているが、本番Reactのパフォーマンスに大きく寄与する重要な最適化だ。
 
 ## 7.8 useRef の実装
 
@@ -322,7 +352,7 @@ setTimeout(() => {
 > )
 > ```
 >
-> 本番Reactの実装でも、`mountState` は内部で `mountReducer` を呼んでいる。
+> 概念的には `useState` は `useReducer` の特殊ケースだが、本番Reactでは `mountState` と `mountReducer` は別関数として実装されている。`mountState` は `basicStateReducer` を使い、専用の `dispatchSetState` をdispatch関数として生成する。
 > `useReducer` を実装するには `updateState` の reducer部分を汎用化するだけだ。
 
 ## まとめ
@@ -335,6 +365,20 @@ setTimeout(() => {
 
 **まだ解決できていないこと：**
 - タイマーやAPIなど「外の世界」との接続（useEffect）
+
+### 演習問題
+
+**Q**: 以下のコンポーネントで、`show` が `true` → `false` に変わったとき何が起きるか？実際にエラーメッセージを確認してみよう。
+
+```typescript
+function BadComponent({ show }) {
+  if (show) {
+    const [count, setCount] = useState(0)
+  }
+  const [name, setName] = useState('')
+  return createElement('div', null, name)
+}
+```
 
 ---
 

@@ -1,3 +1,4 @@
+import { vi } from 'vitest'
 // Dispatcherを初期化するために hooks/useState.ts を先にインポートする必要がある
 import '../src/hooks/useState'
 import { createElement } from '../src/createElement'
@@ -24,7 +25,7 @@ describe('useEffect (Chapter 8): 副作用フック', () => {
   })
 
   test('マウント時にエフェクトが実行される', async () => {
-    const effect = jest.fn()
+    const effect = vi.fn()
 
     function Component() {
       useEffect(effect, [])
@@ -38,8 +39,8 @@ describe('useEffect (Chapter 8): 副作用フック', () => {
   })
 
   test('アンマウント時にクリーンアップが実行される', async () => {
-    const cleanup = jest.fn()
-    const effect = jest.fn(() => cleanup)
+    const cleanup = vi.fn()
+    const effect = vi.fn(() => cleanup)
     let setVisible: (v: boolean) => void
 
     function Wrapper() {
@@ -64,7 +65,7 @@ describe('useEffect (Chapter 8): 副作用フック', () => {
   })
 
   test('depsが変化した場合のみ再実行される', async () => {
-    const effect = jest.fn()
+    const effect = vi.fn()
     let setDep: (n: number) => void
 
     function Component() {
@@ -90,7 +91,7 @@ describe('useEffect (Chapter 8): 副作用フック', () => {
   })
 
   test('依存配列なし: 毎回のレンダリングで実行される', async () => {
-    const effect = jest.fn()
+    const effect = vi.fn()
     let setCount: (n: number | ((n: number) => number)) => void
 
     function Component() {
@@ -133,7 +134,7 @@ describe('useEffect (Chapter 8): 副作用フック', () => {
   })
 
   test('Object.is: NaN の deps 変化を正しく検出する', async () => {
-    const effect = jest.fn()
+    const effect = vi.fn()
     let setVal: (v: number) => void
 
     function Component() {
@@ -154,8 +155,8 @@ describe('useEffect (Chapter 8): 副作用フック', () => {
   })
 
   test('複数のuseEffectが独立して動作する', async () => {
-    const effect1 = jest.fn()
-    const effect2 = jest.fn()
+    const effect1 = vi.fn()
+    const effect2 = vi.fn()
 
     function Component() {
       useEffect(effect1, [])
