@@ -36,6 +36,37 @@ const element = MiniReact.createElement('div', { className: 'greeting' }, 'Hello
 > import { createElement } from './index' // ✗ MiniReact が未定義になる
 > ```
 
+> **コラム: Classic Transform vs Automatic Transform**
+>
+> ここで使っている `"jsx": "react"` は **Classic Transform** と呼ばれる方式で、React 16以前からある変換だ。
+> React 17 では **Automatic Transform**（`"jsx": "react-jsx"`）が導入された。
+>
+> |  | Classic (`react`) | Automatic (`react-jsx`) |
+> |---|---|---|
+> | 導入 | 〜React 16 | React 17〜 |
+> | 変換先 | `React.createElement(...)` | `jsx()` / `jsxs()` from `react/jsx-runtime` |
+> | import | 各ファイルに `import React` が必要 | 自動でimportされる（不要） |
+> | childrenの渡し方 | 可変長引数 `(...children)` | `props.children` にまとめる |
+>
+> ```jsx
+> // 同じJSX
+> <div className="foo">Hello</div>
+>
+> // Classic 変換後
+> React.createElement('div', { className: 'foo' }, 'Hello')
+>
+> // Automatic 変換後（react/jsx-runtime が自動でimportされる）
+> import { jsx as _jsx } from 'react/jsx-runtime'
+> _jsx('div', { className: 'foo', children: 'Hello' })
+> ```
+>
+> mini-react では意図的に Classic を使っている。理由は：
+> 1. **わかりやすさ** — JSXが関数呼び出しに変わるという概念が直感的に理解できる
+> 2. **実装の単純さ** — Automatic には別途 `react/jsx-runtime` の実装（`jsx`・`jsxs`・`jsxDEV`）が必要になる
+> 3. **カスタマイズのしやすさ** — `jsxFactory` 1行で任意の関数に向けられる
+>
+> 現代のReactアプリでは Automatic が標準だが、「JSXが何に変換されるか」を学ぶには Classic の方が透明性が高い。
+
 ## 2.2 "Virtual DOM" とは言わない
 
 React elements のことを "Virtual DOM" と呼ぶ記事をよく見かける。しかし React 公式ドキュメントは "Virtual DOM" という用語を推奨していない。
